@@ -51,6 +51,9 @@ const ignore = (file, stats) => {
   const isDotfile = filename.charAt(0) === '.'
   if (isDotfile) return true
 
+  const isURL = filename.slice(-4) === '.url'
+  if (isURL) return true
+
   return false
 }
 
