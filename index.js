@@ -56,10 +56,12 @@ const ignore = (file, stats) => {
 
 const main = async () => {
   for (let i=0; i<config.src.length; i++) {
+    console.log(`Scanning: ${config.src[i]}`)
     const files = await readdir(config.src[i], [ignore])
     await processFiles(files)
     console.log(`Files: ${files.length}`)
     console.log(`Unique Hashes: ${Object.keys(file_index).length}`)
+    saveIndex()
   }
 
   saveIndex()
