@@ -70,13 +70,14 @@ const updateFileIndex = async (hash, filepath) => {
   const exists = await file_index.get(hash).catch(err => {})
 
   if (exists) {
-    console.log(exists)
+    let items = JSON.parse(exists)
+    console.log(items)
     console.log(`${hash} - ${filepath} - DUPLICATE`)
-    const isNewFile = exists.indexOf(filepath) === -1
+    const isNewFile = items.indexOf(filepath) === -1
     if (isNewFile) {
-      exists.push(filepath)
+      items.push(filepath)
       try {
-        await file_index.put(hash, exists)
+        await file_index.put(hash, JSON.stringify(items))
       } catch (e) {
         console.log(e)
       }
@@ -90,7 +91,7 @@ const updateFileIndex = async (hash, filepath) => {
   console.log(`Copying to ${dest}`)
   fs.copyFileSync(filepath, dest)
   try {
-    await file_index.put(hash, [filepath])
+    await file_index.put(hash, JSON.stringify([filepath]))
   } catch (e) {
     console.log(e)
   }
@@ -102,10 +103,11 @@ const updateDuplicateIndex = async (hash, filepath) => {
     const metadata = await getMetadata(filepath)
     const exists = await duplicate_index.get(hash)
     if (exists) {
-      exists.push(metadata)
-      await duplicate_index.put(hash, exists)
+      let items = JSON.parse(exists)
+      items.push(metadata)
+      await duplicate_index.put(hash, JSON.stringify(items))
     } else {
-      await duplicate_index.put(hash, [metadata])
+      await duplicate_index.put(hash, JSON.stringify([metadata]))
     }
   } catch (e) {
     console.log(e)
@@ -116,12 +118,13 @@ const updateFingerprintIndex = async (hash, filepath) => {
   const exists = await fingerprint_index.get(hash).catch(err => {})
 
   if (!exists) {
-    await fingerprint_index.put(hash, [filepath])
+    await fingerprint_index.put(hash, JSON.stringify([filepath]))
     return
   }
 
-  exists.push(filepath)
-  await fingerprint_index.put(hash, exists)
+  let items = JSON.parse(exists)
+  items.push(filepath)
+  await fingerprint_index.put(hash, JSON.stringify(items))
 
   await updateDuplicateIndex(hash, filepath)
 }
