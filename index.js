@@ -46,7 +46,7 @@ const saveIndexes = () => {
   jsonfile.writeFileSync(FILE_INDEX_PATH, file_index, { spaces: 2 })
   jsonfile.writeFileSync(FINGERPRINT_INDEX_PATH, fingerprint_index, { spaces: 2 })
   jsonfile.writeFileSync(DUPLICATE_INDEX_PATH, duplicate_index, { spaces: 2 })
-  jsonfile.writeFileSync(IGNORED_INDEX_PATH, index_path, { spaces: 2 })
+  jsonfile.writeFileSync(IGNORED_INDEX_PATH, ignored_index, { spaces: 2 })
 }
 
 const getAcoustID = (filepath) => {
