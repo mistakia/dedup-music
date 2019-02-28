@@ -91,13 +91,15 @@ const updateFileIndex = (hash, filepath) => {
     console.log(`Copying to ${dest}`)
     fs.copyFileSync(filepath, dest)
     file_index[hash] = [filepath]
-    return
+    return exists
   }
 
   console.log(file_index[hash])
   console.log(`${hash} - ${filepath} - DUPLICATE`)
   const isNewFile = file_index[hash].indexOf(filepath) === -1
   if (isNewFile) file_index[hash].push(filepath)
+
+  return exists
 }
 
 const updateDuplicateIndex = async (hash, filepath) => {
@@ -129,8 +131,8 @@ const processFile = async (file) => {
     const acoustID = await getAcoustID(file)
     fingerprinthash = getSha256(acoustID.fingerprint)
     filehash = await getSha256File(file)
-    updateFileIndex(filehash, file)
-    await updateFingerprintIndex(fingerprinthash, file)
+    const exists = updateFileIndex(filehash, file)
+    if (!exists) await updateFingerprintIndex(fingerprinthash, file)
   } catch (e) {
     console.log(e)
   }
