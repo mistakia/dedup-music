@@ -7,23 +7,15 @@ const ffmpeg = require('fluent-ffmpeg')
 const jsonfile = require('jsonfile')
 const sha256File = require('sha256-file')
 const readdir = require('recursive-readdir')
+const level = require('level')
 
 const config = require('./config')
 
-const FILE_INDEX_PATH = path.resolve(__dirname, 'file-index.json')
-let file_index = {}
-try {
-  file_index = jsonfile.readFileSync(FILE_INDEX_PATH)
-} catch (e) {
-  console.log(e)
-}
-const FINGERPRINT_INDEX_PATH = path.resolve(__dirname, 'fingerprint-index.json')
-let fingerprint_index = {}
-try {
-  fingerprint_index = jsonfile.readFileSync(FINGERPRINT_INDEX_PATH)
-} catch (e) {
-  console.log(e)
-}
+const FILE_INDEX_PATH = path.resolve(__dirname, 'file-index')
+let file_index = level(FILE_INDEX_PATH)
+
+const FINGERPRINT_INDEX_PATH = path.resolve(__dirname, 'fingerprint-index')
+let fingerprint_index = level(FINGERPRINT_INDEX_PATH)
 
 const IGNORED_INDEX_PATH = path.resolve(__dirname, 'ignored-index.json')
 let ignored_index = []
@@ -33,19 +25,11 @@ try {
   console.log(e)
 }
 
-const DUPLICATE_INDEX_PATH = path.resolve(__dirname, 'duplicate-index.json')
-let duplicate_index = {}
-try {
-  duplicate_index = jsonfile.readFileSync(DUPLICATE_INDEX_PATH)
-} catch (e) {
-  console.log(e)
-}
+const DUPLICATE_INDEX_PATH = path.resolve(__dirname, 'duplicate-index')
+let duplicate_index = level(DUPLICATE_INDEX_PATH)
 
 const saveIndexes = () => {
-  console.log(`Saving index: ${Object.keys(file_index).length}`)
-  jsonfile.writeFileSync(FILE_INDEX_PATH, file_index, { spaces: 2 })
-  jsonfile.writeFileSync(FINGERPRINT_INDEX_PATH, fingerprint_index, { spaces: 2 })
-  jsonfile.writeFileSync(DUPLICATE_INDEX_PATH, duplicate_index, { spaces: 2 })
+  console.log(`Saving index: ${Object.keys(ignored_index).length}`)
   jsonfile.writeFileSync(IGNORED_INDEX_PATH, ignored_index, { spaces: 2 })
 }
 
@@ -82,42 +66,62 @@ const getSha256 = (string) => {
   return sum.digest('hex')
 }
 
-const updateFileIndex = (hash, filepath) => {
-  const exists = !!file_index[hash]
+const updateFileIndex = async (hash, filepath) => {
+  const exists = await file_index.get(hash).catch(err => {})
 
-  if (!exists) {
-    const filename = path.basename(filepath)
-    const dest = path.resolve(config.dest, filename)
-    console.log(`Copying to ${dest}`)
-    fs.copyFileSync(filepath, dest)
-    file_index[hash] = [filepath]
+  if (exists) {
+    console.log(exists)
+    console.log(`${hash} - ${filepath} - DUPLICATE`)
+    const isNewFile = exists.indexOf(filepath) === -1
+    if (isNewFile) {
+      exists.push(filepath)
+      try {
+        await file_index.put(hash, exists)
+      } catch (e) {
+        console.log(e)
+      }
+    }
+
     return exists
   }
 
-  console.log(file_index[hash])
-  console.log(`${hash} - ${filepath} - DUPLICATE`)
-  const isNewFile = file_index[hash].indexOf(filepath) === -1
-  if (isNewFile) file_index[hash].push(filepath)
-
+  const filename = path.basename(filepath)
+  const dest = path.resolve(config.dest, filename)
+  console.log(`Copying to ${dest}`)
+  fs.copyFileSync(filepath, dest)
+  try {
+    await file_index.put(hash, [filepath])
+  } catch (e) {
+    console.log(e)
+  }
   return exists
 }
 
 const updateDuplicateIndex = async (hash, filepath) => {
   try {
     const metadata = await getMetadata(filepath)
-    const exists = !!duplicate_index[hash]
-    exists ? duplicate_index[hash].push(metadata) : duplicate_index[hash] = [metadata]
+    const exists = await duplicate_index.get(hash)
+    if (exists) {
+      exists.push(metadata)
+      await duplicate_index.put(hash, exists)
+    } else {
+      await duplicate_index.put(hash, [metadata])
+    }
   } catch (e) {
     console.log(e)
   }
 }
 
 const updateFingerprintIndex = async (hash, filepath) => {
-  const exists = !!fingerprint_index[hash]
+  const exists = await fingerprint_index.get(hash).catch(err => {})
 
   if (!exists) {
-    return fingerprint_index[hash] = [filepath]
+    await fingerprint_index.put(hash, [filepath])
+    return
   }
+
+  exists.push(filepath)
+  await fingerprint_index.put(hash, exists)
 
   await updateDuplicateIndex(hash, filepath)
 }
@@ -131,7 +135,7 @@ const processFile = async (file) => {
     const acoustID = await getAcoustID(file)
     fingerprinthash = getSha256(acoustID.fingerprint)
     filehash = await getSha256File(file)
-    const exists = updateFileIndex(filehash, file)
+    const exists = await updateFileIndex(filehash, file)
     if (!exists) await updateFingerprintIndex(fingerprinthash, file)
   } catch (e) {
     console.log(e)
@@ -150,14 +154,22 @@ const processFiles = async (files) => {
 }
 
 const ignoreFile = (file, stats) => {
+  const isDirectory = stats.isDirectory()
+  if (isDirectory) return false
+
   const filename = path.basename(file)
   const isDotfile = filename.charAt(0) === '.'
   if (isDotfile) return true
 
-  const isURL = filename.slice(-4) === '.url'
-  if (isURL) return true
+  const extension = path.extname(filename)
 
-  return false
+  const acceptedExts = [
+    '.mp2', '.mp3', '.mp4', '.flac', '.wav',
+    '.m4a', '.m4p', '.aif', '.aiff', '.aifc'
+  ]
+
+  const isAcceptedExts = acceptedExts.indexOf(extension) > -1
+  return !isAcceptedExts
 }
 
 const getAudioFiles = async (files) => {
@@ -186,10 +198,10 @@ const main = async () => {
     for (let i=0; i<config.src.length; i++) {
       console.log(`Scanning: ${config.src[i]}`)
       const files = await readdir(config.src[i], [ignoreFile])
-      const audio_files = await getAudioFiles(files)
-      await processFiles(files)
       console.log(`Files: ${files.length}`)
-      console.log(`Unique Hashes: ${Object.keys(file_index).length}`)
+      const audio_files = await getAudioFiles(files)
+      console.log(`Audio Files: ${audio_files.length}`)
+      await processFiles(files)
       saveIndexes()
     }
   } catch (e) {
