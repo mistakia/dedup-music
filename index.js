@@ -101,7 +101,7 @@ const updateFileIndex = async (hash, filepath) => {
 const updateDuplicateIndex = async (hash, filepath) => {
   try {
     const metadata = await getMetadata(filepath)
-    const exists = await duplicate_index.get(hash)
+    const exists = await duplicate_index.get(hash).catch(err => {})
     if (exists) {
       let items = JSON.parse(exists)
       items.push(metadata)
