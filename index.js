@@ -8,6 +8,7 @@ const jsonfile = require('jsonfile')
 const sha256File = require('sha256-file')
 const readdir = require('recursive-readdir')
 const level = require('level')
+const id = require('nanoid')
 
 const config = require('./config')
 
@@ -86,7 +87,7 @@ const updateFileIndex = async (hash, filepath) => {
     return exists
   }
 
-  const filename = path.basename(filepath)
+  const filename = `${id(4)}-${path.basename(filepath)}`
   const dest = path.resolve(config.dest, filename)
   console.log(`Copying to ${dest}`)
   fs.copyFileSync(filepath, dest)
